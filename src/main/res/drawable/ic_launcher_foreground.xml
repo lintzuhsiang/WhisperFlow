@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Launcher foreground: microphone wave + translate symbol -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Translate "A→文" glyph, centred in the safe zone (20dp inset each side) -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M34.87,69.07l-2.54,-2.51 0.03,-0.03c1.74,-2.0 3,-4.27 3.75,-6.53H39V58h-7V56H30v2H23V60h11.17C33.5,61.92 32.44,63.75 31,65.35 30.07,64.32 29.3,63.19 28.69,62h-2c0.73,1.63 1.73,3.17 2.98,4.56l-5.09,5.02L26,73l5,-5 3.11,3.11 0.76,-2.04zM40.5,64h-2L34,76h2l1.12,-3h4.75L43,76h2l-4.5,-12zM37.88,71l1.62,-4.33L41.12,71h-3.24z" />
+
+    <!-- Microphone body -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M65,38c0,-2.76 -2.24,-5 -5,-5s-5,2.24 -5,5v8c0,2.76 2.24,5 5,5s5,-2.24 5,-5V38z" />
+    <!-- Microphone stand arc -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M71,46c0,5.52 -4.48,10 -10,10s-10,-4.48 -10,-10h-2c0,6.28 4.72,11.44 10.75,11.92V61h-4v2h10v-2h-4v-3.08C67.28,57.44 72,52.28 72,46H71z"
+        android:strokeWidth="0.5" />
+</vector>
