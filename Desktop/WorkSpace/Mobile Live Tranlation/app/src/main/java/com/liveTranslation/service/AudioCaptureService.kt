@@ -61,9 +61,11 @@ class AudioCaptureService : Service() {
     private val serviceScope = CoroutineScope(Dispatchers.Default + Job())
     private var captureJob: Job? = null
 
+    data class InferencePayload(val audio: ShortArray, val isFinal: Boolean)
+
     // Channel to hold audio. Capacity=1 with DROP_OLDEST prevents an infinite backlog
     // while ensuring the CPU never sits idle if inference lags slightly.
-    private val audioChannel = Channel<ShortArray>(
+    private val audioChannel = Channel<InferencePayload>(
         capacity = 1,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
@@ -196,8 +198,8 @@ class AudioCaptureService : Service() {
         captureJob = serviceScope.launch {
             // Start the background inference pipeline consumer
             launch {
-                for (snapshot in audioChannel) {
-                    processWindow(snapshot, lastTranscript)
+                for (payload in audioChannel) {
+                    processWindow(payload.audio, lastTranscript, payload.isFinal)
                 }
             }
             runCaptureLoop()
@@ -226,6 +228,9 @@ class AudioCaptureService : Service() {
         val utteranceBuffer = mutableListOf<ShortArray>()
         var utteranceSamples = 0
 
+        // Timer for streaming partial updates
+        var lastPartialDurationMs = 0L
+
         // Keep a small rollback buffer to prepend to utterances (captures the breath/onset)
         val preRollFrames = 3
         val preRollBuffer = kotlin.collections.ArrayDeque<ShortArray>(preRollFrames)
@@ -250,6 +255,7 @@ class AudioCaptureService : Service() {
                     // Transition to SPEAKING
                     isSpeaking = true
                     silenceFramesCount = 0
+                    lastPartialDurationMs = 0L
                     Log.v(TAG, "VAD: Speech started")
 
                     // Add pre-roll buffer so we don't cut off the start of words
@@ -281,6 +287,23 @@ class AudioCaptureService : Service() {
 
                 // Check for utterance end conditions
                 val utteranceDurationMs = (utteranceSamples * 1000L) / SAMPLE_RATE
+
+                // --- Streaming Partial Updates ---
+                // If enough time has passed, send a partial update so the UI feels "streaming"
+                if (utteranceDurationMs - lastPartialDurationMs >= PARTIAL_UPDATE_INTERVAL_MS) {
+                    lastPartialDurationMs = utteranceDurationMs
+
+                    // Only send partial if it contains at least some minimum speech duration
+                    if (utteranceDurationMs >= MIN_SPEECH_DURATION_MS) {
+                        val partialUtterance = ShortArray(utteranceSamples)
+                        var offset = 0
+                        for (frame in utteranceBuffer) {
+                            System.arraycopy(frame, 0, partialUtterance, offset, frame.size)
+                            offset += frame.size
+                        }
+                        audioChannel.trySend(InferencePayload(partialUtterance, isFinal = false))
+                    }
+                }
                 val maxDurationReached = utteranceDurationMs >= MAX_SPEECH_DURATION_MS
                 val silenceTimeoutReached = silenceFramesCount >= silenceFramesThreshold
 
@@ -301,7 +324,7 @@ class AudioCaptureService : Service() {
                         }
 
                         // Send the complete utterance to the background pipeline
-                        audioChannel.trySend(finalUtterance)
+                        audioChannel.trySend(InferencePayload(finalUtterance, isFinal = true))
                     } else {
                         Log.v(TAG, "VAD: Utterance too short (${utteranceDurationMs}ms), discarding")
                     }
@@ -341,8 +364,9 @@ class AudioCaptureService : Service() {
      *
      * @param audio   3 s PCM-16 window.
      * @param prompt  Previous transcription used as whisper's `initial_prompt`.
+     * @param isFinal True if this is a finished sentence, false if partial "streaming" update
      */
-    private suspend fun processWindow(audio: ShortArray, prompt: String) {
+    private suspend fun processWindow(audio: ShortArray, prompt: String, isFinal: Boolean) {
         // ── 1. Speech-to-Text (+ optional built-in EN translation) ────────
         val whisperUsedTranslation = targetLang == "en" && sourceLang != "en"
         val transcript = asrEngine.transcribe(audio, sourceLang, targetLang, prompt)
@@ -358,10 +382,13 @@ class AudioCaptureService : Service() {
         }
 
         // Save for next window's context prompt (trim to last ~200 chars to
-        // avoid feeding an ever-growing string into the decoder).
-        lastTranscript = transcript.takeLast(MAX_PROMPT_CHARS)
+        // avoid feeding an ever-growing string into the decoder)
+        // ONLY save if this is Final, otherwise partial text pollutes context of the same utterance
+        if (isFinal) {
+            lastTranscript = transcript.takeLast(MAX_PROMPT_CHARS)
+        }
 
-        Log.d(TAG, "Transcript [$sourceLang]: $transcript")
+        Log.d(TAG, "Transcript [$sourceLang] (final=$isFinal): $transcript")
 
         // ── 2. Translation ─────────────────────────────────────────────────
         val translation = when {
@@ -370,13 +397,15 @@ class AudioCaptureService : Service() {
             else -> mtEngine.translate(transcript, sourceLang, targetLang)
         }
 
-        Log.d(TAG, "Translation [$targetLang]: $translation")
+        Log.d(TAG, "Translation [$targetLang] (final=$isFinal): $translation")
 
         // ── 3. Update the floating overlay (must be on Main thread) ────────
         withContext(Dispatchers.Main) {
+            val displayTranscript = if (isFinal) transcript else "$transcript..."
+            val displayTranslation = if (isFinal) translation else "$translation..."
             floatingView.updateSubtitle(
-                originalText   = transcript,
-                translatedText = translation
+                originalText   = displayTranscript,
+                translatedText = displayTranslation
             )
         }
     }
@@ -419,6 +448,9 @@ class AudioCaptureService : Service() {
 
         /** Min length of speech to be considered valid (ignore short pops, in ms) */
         const val MIN_SPEECH_DURATION_MS = 400L
+
+        /** How often to update the UI while speaking (in ms) */
+        const val PARTIAL_UPDATE_INTERVAL_MS = 800L
 
         /** Max length of an utterance before we forcibly cut it (in ms) */
         const val MAX_SPEECH_DURATION_MS = 15_000L
