@@ -1,0 +1,185 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#F5F5F5"
+    tools:context=".MainActivity">
+
+    <!-- ─── Header ─── -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="#00796B"
+        android:padding="28dp"
+        android:gravity="center">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Live Translation"
+            android:textSize="26sp"
+            android:textStyle="bold"
+            android:textColor="#FFFFFF"
+            android:letterSpacing="0.02" />
+
+        <TextView
+            android:id="@+id/tvStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Status: Idle"
+            android:textSize="13sp"
+            android:textColor="#B2DFDB"
+            android:layout_marginTop="6dp" />
+    </LinearLayout>
+
+    <!-- ─── Language Selection Card ─── -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="@drawable/card_background"
+        android:layout_marginStart="20dp"
+        android:layout_marginEnd="20dp"
+        android:layout_marginTop="-16dp"
+        android:padding="20dp"
+        android:elevation="4dp">
+
+        <!-- Source Language -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="AUDIO LANGUAGE"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:textColor="#00796B"
+            android:letterSpacing="0.1"
+            android:layout_marginBottom="6dp" />
+
+        <Spinner
+            android:id="@+id/spinnerSourceLang"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="@drawable/spinner_background"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:popupBackground="#FFFFFF" />
+
+        <!-- Swap arrow -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="↓"
+            android:textSize="20sp"
+            android:textColor="#BDBDBD"
+            android:gravity="center"
+            android:layout_marginTop="10dp"
+            android:layout_marginBottom="4dp" />
+
+        <!-- Target Language -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="TRANSLATE TO"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:textColor="#00796B"
+            android:letterSpacing="0.1"
+            android:layout_marginBottom="6dp" />
+
+        <Spinner
+            android:id="@+id/spinnerTargetLang"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="@drawable/spinner_background"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:popupBackground="#FFFFFF" />
+
+        <!-- ─── Subtitle Options ─── -->
+        <CheckBox
+            android:id="@+id/cbShowOriginal"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="Show original language subtitles"
+            android:textSize="14sp"
+            android:textColor="#333333"
+            android:checked="false" />
+
+        <!-- ─── Translation Engine ─── -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="TRANSLATION ENGINE"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:textColor="#00796B"
+            android:letterSpacing="0.1"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="6dp" />
+
+        <RadioGroup
+            android:id="@+id/rgEngine"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <RadioButton
+                android:id="@+id/rbGpt"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Cloud GPT"
+                android:checked="true" />
+
+            <RadioButton
+                android:id="@+id/rbLocal"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Local NLLB"
+                android:layout_marginStart="16dp" />
+        </RadioGroup>
+
+        <EditText
+            android:id="@+id/etApiKey"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="OpenAI API Key (sk-...)"
+            android:inputType="textPassword"
+            android:textSize="14sp"
+            android:layout_marginTop="8dp" />
+    </LinearLayout>
+
+    <!-- ─── Spacer ─── -->
+    <View
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <!-- ─── Start / Stop Button ─── -->
+    <Button
+        android:id="@+id/btnToggle"
+        android:layout_width="220dp"
+        android:layout_height="56dp"
+        android:layout_gravity="center_horizontal"
+        android:text="Start Translation"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:textColor="#FFFFFF"
+        android:backgroundTint="#00796B"
+        android:layout_marginBottom="12dp" />
+
+    <!-- ─── Hint ─── -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginBottom="32dp"
+        android:textSize="12sp"
+        android:textColor="#999999"
+        android:gravity="center"
+        android:text="Captures audio from other apps.\nOverlay permission required." />
+
+</LinearLayout>

@@ -54,7 +54,7 @@ class AudioCaptureService : Service() {
     private var audioRecord: AudioRecord? = null
 
     private lateinit var asrEngine: WhisperCppEngine
-    private lateinit var mtEngine: LocalNllbEngine
+    private lateinit var mtEngine: com.liveTranslation.ai.TranslationEngine
     private lateinit var floatingView: FloatingSubtitleView
 
     // Service-scoped coroutine scope: cancelled in onDestroy
@@ -77,6 +77,7 @@ class AudioCaptureService : Service() {
     // Language settings (injected via Intent extras)
     private var sourceLang = "auto"
     private var targetLang = "en"
+    private var showOriginal = false
 
     // ──────────────────────────────────────────────────────────────────────
     // Lifecycle
@@ -93,7 +94,7 @@ class AudioCaptureService : Service() {
         NotificationHelper.createChannel(this)
 
         asrEngine    = WhisperCppEngine(applicationContext)
-        mtEngine     = LocalNllbEngine(applicationContext)
+        // Note: mtEngine is instantiated in onStartCommand where intent extras are available
         floatingView = FloatingSubtitleView(this)
         floatingView.show()
     }
@@ -110,7 +111,22 @@ class AudioCaptureService : Service() {
 
         sourceLang = intent?.getStringExtra(EXTRA_SOURCE_LANG) ?: "auto"
         targetLang = intent?.getStringExtra(EXTRA_TARGET_LANG) ?: "en"
-        Log.i(TAG, "Languages: $sourceLang -> $targetLang")
+        showOriginal = intent?.getBooleanExtra(EXTRA_SHOW_ORIGINAL, false) ?: false
+        floatingView.setShowOriginal(showOriginal)
+
+        val useGpt = intent?.getBooleanExtra(EXTRA_USE_GPT, true) ?: true
+        val apiKey = intent?.getStringExtra(EXTRA_API_KEY) ?: ""
+
+        if (::mtEngine.isInitialized) {
+            mtEngine.release()
+        }
+        mtEngine = if (useGpt) {
+            com.liveTranslation.ai.GptTranslationEngine(apiKey = apiKey, modelName = "gpt-4o-mini")
+        } else {
+            LocalNllbEngine(applicationContext)
+        }
+
+        Log.i(TAG, "Languages: $sourceLang -> $targetLang, Engine: ${if (useGpt) "GPT" else "Local NLLB"}")
 
         val projectionData: Intent = intent?.getParcelableExtra(EXTRA_RESULT_DATA)
             ?: run {
@@ -430,6 +446,9 @@ class AudioCaptureService : Service() {
         const val EXTRA_RESULT_DATA = "result_data"
         const val EXTRA_SOURCE_LANG = "source_lang"
         const val EXTRA_TARGET_LANG = "target_lang"
+        const val EXTRA_SHOW_ORIGINAL = "show_original"
+        const val EXTRA_USE_GPT = "use_gpt"
+        const val EXTRA_API_KEY = "api_key"
 
         // ── Audio parameters ──────────────────────────────────────────
         /** Whisper.cpp requires exactly 16 000 Hz mono PCM-16. */
@@ -466,11 +485,17 @@ class AudioCaptureService : Service() {
             context: android.content.Context,
             projectionResultData: Intent,
             sourceLang: String = "auto",
-            targetLang: String = "en"
+            targetLang: String = "en",
+            showOriginal: Boolean = false,
+            useGpt: Boolean = true,
+            apiKey: String = ""
         ) = Intent(context, AudioCaptureService::class.java).apply {
             putExtra(EXTRA_RESULT_DATA, projectionResultData)
             putExtra(EXTRA_SOURCE_LANG, sourceLang)
             putExtra(EXTRA_TARGET_LANG, targetLang)
+            putExtra(EXTRA_SHOW_ORIGINAL, showOriginal)
+            putExtra(EXTRA_USE_GPT, useGpt)
+            putExtra(EXTRA_API_KEY, apiKey)
         }
     }
 }
