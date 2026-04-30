@@ -1,0 +1,27 @@
+# Build artifacts
+app/build/
+app/.cxx/
+app/.gradle/
+.gradle/
+.idea/
+*.iml
+
+# ML model files (too large for git — distribute separately)
+app/src/main/assets/
+app/nllb_int8/
+nllb_int8_v2/
+nllb_int8_v3/
+
+# External libraries (vendor as submodule or via build script)
+whisper.cpp/
+
+# Bench data
+bench_test_audio/
+bench_results/
+
+# Python
+__pycache__/
+*.pyc
+
+# OS
+.DS_Store

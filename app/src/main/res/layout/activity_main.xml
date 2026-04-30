@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -9,6 +10,7 @@
 
     <!-- ─── Header ─── -->
     <LinearLayout
+        android:id="@+id/headerSection"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
@@ -37,6 +39,7 @@
 
     <!-- ─── Language Selection Card ─── -->
     <LinearLayout
+        android:id="@+id/settingsCard"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
@@ -106,8 +109,9 @@
             android:layout_marginTop="16dp"
             android:text="Show original language subtitles"
             android:textSize="14sp"
-            android:textColor="#333333"
-            android:checked="false" />
+            android:textColor="#212121"
+            android:checked="false"
+            android:buttonTint="#00796B" />
 
         <!-- ─── Translation Engine ─── -->
         <TextView
@@ -132,6 +136,8 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Cloud GPT"
+                android:textColor="#212121"
+                android:buttonTint="#00796B"
                 android:checked="true" />
 
             <RadioButton
@@ -139,17 +145,39 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Local NLLB"
+                android:textColor="#212121"
+                android:buttonTint="#00796B"
                 android:layout_marginStart="16dp" />
         </RadioGroup>
 
-        <EditText
-            android:id="@+id/etApiKey"
+        <!-- TextInputLayout gives us the eye/visibility toggle for free -->
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/tilApiKey"
+            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="OpenAI API Key (sk-...)"
-            android:inputType="textPassword"
-            android:textSize="14sp"
-            android:layout_marginTop="8dp" />
+            android:layout_marginTop="8dp"
+            app:endIconMode="password_toggle"
+            app:endIconTint="#00796B"
+            app:boxStrokeColor="#00796B"
+            app:hintTextColor="#00796B"
+            app:boxStrokeWidth="1.5dp"
+            app:boxCornerRadiusTopStart="8dp"
+            app:boxCornerRadiusTopEnd="8dp"
+            app:boxCornerRadiusBottomStart="8dp"
+            app:boxCornerRadiusBottomEnd="8dp">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/etApiKey"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="OpenAI API Key (sk-...)"
+                android:inputType="textPassword"
+                android:textSize="14sp"
+                android:textColor="#212121"
+                android:textColorHint="#9E9E9E" />
+
+        </com.google.android.material.textfield.TextInputLayout>
     </LinearLayout>
 
     <!-- ─── Spacer ─── -->
@@ -171,8 +199,86 @@
         android:backgroundTint="#00796B"
         android:layout_marginBottom="12dp" />
 
+    <!-- ─── Open Video (dual-track player mode) ─── -->
+    <Button
+        android:id="@+id/btnOpenVideo"
+        android:layout_width="220dp"
+        android:layout_height="48dp"
+        android:layout_gravity="center_horizontal"
+        android:text="Open Video Player"
+        android:textSize="14sp"
+        android:textColor="#FFFFFF"
+        android:backgroundTint="#455A64"
+        android:layout_marginBottom="16dp" />
+
+    <!-- ─── PiP Caption Container (visible only in PiP mode) ─── -->
+    <!-- Fills the PiP window with a dark caption overlay showing live subtitles. -->
+    <LinearLayout
+        android:id="@+id/pipStatusContainer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:background="#DD000000"
+        android:paddingStart="14dp"
+        android:paddingEnd="14dp"
+        android:paddingTop="10dp"
+        android:paddingBottom="10dp"
+        android:visibility="gone">
+
+        <!-- Original / source-language text — shown only when "Show original" is on -->
+        <TextView
+            android:id="@+id/tvPipOriginal"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textColor="#B3FFFFFF"
+            android:textSize="11sp"
+            android:gravity="center"
+            android:maxLines="2"
+            android:ellipsize="end"
+            android:visibility="gone" />
+
+        <!-- Main translated caption text -->
+        <TextView
+            android:id="@+id/tvPipTranslated"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textColor="#FFFFFF"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:maxLines="3"
+            android:ellipsize="end"
+            android:layout_marginTop="2dp" />
+
+        <!-- Status line (Listening… / Disconnected / Idle) -->
+        <TextView
+            android:id="@+id/tvPipStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/pip_status_listening"
+            android:textColor="#80FFFFFF"
+            android:textSize="10sp"
+            android:gravity="center"
+            android:layout_marginTop="6dp" />
+
+        <!-- Tap-to-return hint -->
+        <TextView
+            android:id="@+id/tvPipHint"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:gravity="center"
+            android:text="@string/pip_hint_tap_to_return"
+            android:textColor="#55FFFFFF"
+            android:textSize="10sp" />
+    </LinearLayout>
+
     <!-- ─── Hint ─── -->
     <TextView
+        android:id="@+id/tvHint"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="center_horizontal"

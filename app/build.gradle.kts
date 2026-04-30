@@ -73,24 +73,22 @@ android {
         // exceed the default ZIP-entry limit when compressed.
         noCompress += listOf("bin", "onnx", "tflite", "ort", "onnx_data")
 
-        // Exclude the two NLLB decoder data blobs (2.7 GB + 2.6 GB) that exceed
-        // AAPT2's per-entry limit.  The encoder (1.5 GB) is kept so basic
-        // translation still works (encoder-only / greedy path in LocalNllbEngine).
+        // Large models are provided from external storage (adb push to:
+        // /sdcard/Android/data/com.liveTranslation/files/...), so exclude them
+        // from APK packaging to keep install size/time reasonable.
         //
-        // To test full translation, push the files to external storage manually:
-        //   adb push nllb_onnx_output/decoder_model.onnx_data \
-        //            /sdcard/Android/data/com.liveTranslation/files/
-        //   adb push nllb_onnx_output/decoder_with_past_model.onnx_data \
-        //            /sdcard/Android/data/com.liveTranslation/files/
+        // What STAYS in the APK (small fallbacks):
+        //   ggml-tiny.en.bin          ~74 MB   (fallback whisper model)
+        //   sentencepiece.bpe.model   ~4.6 MB  (NLLB tokenizer)
         //
-        // Also exclude ggml-medium.bin (1.4 GB) – not used in this build.
-        // Switch WhisperCppEngine.MODEL_FILENAME back to "ggml-medium.bin" if needed.
-        // Only the two NLLB decoder data blobs are excluded — they are 2.6–2.7 GB
-        // each and exceed AAPT2's per-entry limit.  Everything else (including
-        // ggml-medium.bin at 1.4 GB and encoder_model.onnx at 1.5 GB) is kept
-        // and stored uncompressed thanks to noCompress above.
+        // What is EXCLUDED (pushed via adb):
+        //   ggml-medium.bin           ~1.4 GB  (whisper medium)
+        //   nllb_onnx_output/         ~6.9 GB  (NLLB FP32 — 3 ONNX + data files)
+        //   nllb_int8/                ~1.7 GB  (NLLB INT8 — 3 ONNX files)
         ignoreAssetsPattern =
-            "!decoder_model.onnx_data:!decoder_with_past_model.onnx_data"
+            "!ggml-medium.bin:" +
+            "!nllb_onnx_output:" +
+            "!nllb_int8"
     }
 }
 
@@ -106,9 +104,9 @@ dependencies {
     implementation("com.google.android.material:material:1.11.0")
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
 
-    // SentencePiece JNI – JitPack artifact is unreliable; re-enable if a
-    // stable Maven coordinate becomes available.
-    // implementation("com.github.google:sentencepiece-jni:0.1.99")
+    // SentencePiece: built from C++ source via CMakeLists.txt (FetchContent)
+    // and exposed through sentencepiece_jni.cpp → SentencePieceJni.kt.
+    // No external Maven/JitPack dependency needed.
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.20.0")
@@ -118,6 +116,13 @@ dependencies {
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
-}
+
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.google.code.gson:gson:2.10.1")
+
+    // Media3 ExoPlayer — used by VideoTranslationActivity (dual-track player)
+    implementation("androidx.media3:media3-exoplayer:1.3.1")
+    implementation("androidx.media3:media3-exoplayer-hls:1.3.1")   // HLS (.m3u8) support
+    implementation("androidx.media3:media3-exoplayer-dash:1.3.1")  // DASH (.mpd) support
+    implementation("androidx.media3:media3-ui:1.3.1")
+}

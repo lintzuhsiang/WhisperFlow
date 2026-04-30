@@ -3,8 +3,6 @@ package com.liveTranslation.ai
 import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.JsonObject
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.runBlocking
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -22,8 +20,10 @@ class GptTranslationEngine(
 ) : TranslationEngine {
 
     private val client = OkHttpClient.Builder()
-        .connectTimeout(5, TimeUnit.SECONDS)
-        .readTimeout(10, TimeUnit.SECONDS)
+        .connectTimeout(3, TimeUnit.SECONDS)
+        .readTimeout(6, TimeUnit.SECONDS)
+        .writeTimeout(6, TimeUnit.SECONDS)
+        .callTimeout(8, TimeUnit.SECONDS)
         .build()
         
     private val gson = Gson()
@@ -36,9 +36,12 @@ class GptTranslationEngine(
         }
         if (text.isBlank()) return text
 
-        val systemPrompt = "You are a professional, real-time translator. " +
-            "Translate the user's text from [$sourceLang] to [$targetLang]. " +
-            "Reply ONLY with the translated text, preserving any punctuation. Do NOT add extra explanations."
+        val srcName = if (sourceLang == "auto") "the detected language" else langName(sourceLang)
+        val tgtName = langName(targetLang)
+
+        val systemPrompt =
+            "Real-time translation. Translate from $srcName to $tgtName. " +
+            "Return only the translation text."
 
         val payload = JsonObject().apply {
             addProperty("model", modelName)
@@ -46,8 +49,8 @@ class GptTranslationEngine(
                 mapOf("role" to "system", "content" to systemPrompt),
                 mapOf("role" to "user", "content" to text)
             )))
-            addProperty("temperature", 0.3)
-            addProperty("max_tokens", 256)
+            addProperty("temperature", 0.0)
+            addProperty("max_tokens", 120)
         }
 
         val request = Request.Builder()
@@ -90,5 +93,33 @@ class GptTranslationEngine(
 
     companion object {
         private const val TAG = "GptTranslationEngine"
+
+        private val LANGUAGE_NAMES = mapOf(
+            "en" to "English",
+            "ja" to "Japanese",
+            "zh" to "Chinese",
+            "zh-cn" to "Simplified Chinese",
+            "zh-tw" to "Traditional Chinese",
+            "ko" to "Korean",
+            "es" to "Spanish",
+            "fr" to "French",
+            "de" to "German",
+            "ar" to "Arabic",
+            "pt" to "Portuguese",
+            "ru" to "Russian",
+            "hi" to "Hindi",
+            "it" to "Italian",
+            "nl" to "Dutch",
+            "pl" to "Polish",
+            "tr" to "Turkish",
+            "vi" to "Vietnamese",
+            "th" to "Thai",
+            "id" to "Indonesian",
+            "ms" to "Malay",
+            "tl" to "Filipino"
+        )
+
+        private fun langName(code: String): String =
+            LANGUAGE_NAMES[code.lowercase()] ?: code
     }
 }
