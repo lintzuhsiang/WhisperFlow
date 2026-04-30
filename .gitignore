@@ -6,6 +6,11 @@ app/.gradle/
 .idea/
 *.iml
 
+# Local config / secrets (must not be committed — read by build.gradle.kts)
+local.properties
+app/local.properties
+.env
+
 # ML model files (too large for git — distribute separately)
 app/src/main/assets/
 app/nllb_int8/

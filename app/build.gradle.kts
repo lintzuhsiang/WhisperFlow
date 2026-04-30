@@ -7,6 +7,22 @@ plugins {
     id("org.jetbrains.kotlin.android") version "2.0.21"
 }
 
+// Read secrets from local.properties (gitignored). Falls back to env vars
+// for CI builds. Never commit a key — local.properties is in .gitignore.
+import java.util.Properties
+val localProps = Properties().apply {
+    val f = rootProject.file("local.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+fun secret(key: String, default: String = ""): String =
+    localProps.getProperty(key)
+        ?: System.getenv(key)
+        ?: default
+
+val openAiKey: String   = secret("OPENAI_API_KEY")
+val sttEngineMode: String = secret("STT_ENGINE_MODE", "CLOUD") // CLOUD or LOCAL
+val mtEngineMode: String  = secret("MT_ENGINE_MODE", "CLOUD")  // CLOUD or LOCAL
+
 android {
     namespace  = "com.liveTranslation"
     compileSdk = 35
@@ -63,6 +79,14 @@ android {
 
     buildFeatures {
         viewBinding = true
+        buildConfig = true
+    }
+
+    defaultConfig {
+        // Inject build-time config into BuildConfig.
+        buildConfigField("String", "OPENAI_API_KEY",   "\"$openAiKey\"")
+        buildConfigField("String", "STT_ENGINE_MODE",  "\"$sttEngineMode\"")
+        buildConfigField("String", "MT_ENGINE_MODE",   "\"$mtEngineMode\"")
     }
 
     ndkVersion = "26.1.10909125"
