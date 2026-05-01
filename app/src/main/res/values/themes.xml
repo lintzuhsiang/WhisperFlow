@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+    WhisperFlow has two activity classes that need different theme bases:
+
+    Theme.LiveTranslation
+        - Used by VideoTranslationActivity (Compose-based, ComponentActivity).
+        - Inherits from android:Theme.Material.NoActionBar so it does NOT
+          require the AppCompat infrastructure. ComponentActivity would
+          throw if asked to inflate a MaterialComponents theme.
+
+    Theme.LiveTranslation.AppCompat
+        - Used by MainActivity (XML-based, AppCompatActivity, Path 1
+          screen-share flow). Kept on MaterialComponents so the existing
+          XML widgets (Toolbar, MaterialButton, etc.) render correctly.
+
+    Visual styling for Compose lives in Kotlin (ui/theme/Theme.kt); these
+    XML themes are just thin shells that strip the action bar and clear
+    the system bars for edge-to-edge composition.
+    -->
+    <style name="Theme.LiveTranslation" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#0E0E10</item>
+        <item name="android:statusBarColor">#00000000</item>
+        <item name="android:navigationBarColor">#00000000</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+
+    <style name="Theme.LiveTranslation.AppCompat" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="android:windowBackground">#111611</item>
+        <item name="android:statusBarColor">#00000000</item>
+        <item name="android:navigationBarColor">#00000000</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="colorPrimary">#2F6D4F</item>
+        <item name="colorPrimaryVariant">#24563E</item>
+        <item name="colorSecondary">#D9A441</item>
+        <item name="colorSecondaryVariant">#B9852F</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="colorOnSecondary">#1A1308</item>
+        <item name="colorSurface">#141B16</item>
+        <item name="colorOnSurface">#E8F3E2</item>
+    </style>
+</resources>

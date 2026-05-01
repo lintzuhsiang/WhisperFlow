@@ -3,17 +3,20 @@ package com.liveTranslation
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
-import android.view.View
-import android.view.inputmethod.InputMethodManager
-import android.widget.*
+import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.media3.common.PlaybackException
 import androidx.media3.exoplayer.source.UnrecognizedInputFormatException
-import androidx.media3.ui.PlayerView
 import com.liveTranslation.ai.GptTranslationEngine
 import com.liveTranslation.ai.LocalNllbEngine
 import com.liveTranslation.ai.OpenAITranscriptionEngine
@@ -23,101 +26,67 @@ import com.liveTranslation.ai.WhisperCppEngine
 import com.liveTranslation.player.DualTrackPlayer
 import com.liveTranslation.player.SubtitleStore
 import com.liveTranslation.player.YouTubeStreamResolver
+import com.liveTranslation.ui.WhisperFlowApp
+import com.liveTranslation.ui.WhisperFlowAppState
+import com.liveTranslation.ui.components.StatusTone
+import com.liveTranslation.ui.screens.RecentSubtitle
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 
 /**
- * Video Translation Activity — dual-track player.
+ * Video Translation Activity — dual-track player, Compose UI.
  *
  * Plays a video file or HTTP URL with real-time ASR + translation subtitles.
- * An invisible audio decoder runs 3 seconds ahead of the visible playback,
- * so subtitles are pre-computed and ready when each scene is displayed.
+ * An invisible audio decoder runs N seconds ahead of the visible playback,
+ * so subtitles are pre-computed and ready by the time each scene plays.
+ *
+ * State model:
+ *   - Activity owns engines and the DualTrackPlayer (lifecycle-tied).
+ *   - Activity exposes a single [_uiState] StateFlow that the Compose tree
+ *     subscribes to. The UI never reaches into engines directly.
+ *   - All user actions surface as callbacks back into the Activity.
  */
-class VideoTranslationActivity : AppCompatActivity() {
+class VideoTranslationActivity : ComponentActivity() {
 
-    // ── Views ────────────────────────────────────────────────────────────
-    private lateinit var playerView: PlayerView
-    private lateinit var subtitleContainer: View
-    private lateinit var tvOriginal: TextView
-    private lateinit var tvTranslated: TextView
-    private lateinit var subtitleDivider: View
-    private lateinit var etVideoUrl: EditText
-    private lateinit var btnLoadUrl: Button
-    private lateinit var btnPickFile: Button
-    private lateinit var tvDecoderStatus: TextView
-    private lateinit var spinnerSrcLang: Spinner
-    private lateinit var spinnerTgtLang: Spinner
-    private lateinit var cbShowOriginal: CheckBox
-    private lateinit var topControlsOverlay: View
-    private lateinit var emptyState: View
-
-    // ── AI Engines ───────────────────────────────────────────────────────
-    //
-    // Both fields are typed by the abstract interface — concrete impl
-    // (whisper.cpp vs OpenAI Whisper API, NLLB vs GPT) is chosen at init
-    // time based on BuildConfig flags read from local.properties.
-    //
-    // Why cloud as default? Local whisper-medium can't run real-time on
-    // Snapdragon 8 Elite. The dual-track player's lookahead absorbs the
-    // ~1-2s API call latency so users perceive realtime subtitles.
+    // ── AI engines (interface-typed; concrete impl chosen by BuildConfig) ──
     private var sttEngine: SpeechToTextEngine? = null
     private var translationEngine: TranslationEngine? = null
     private var dualTrackPlayer: DualTrackPlayer? = null
     private val initScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private var enginesLoading = false
     private var resumePlaybackOnStart = false
-    private var enginesLoading = false   // prevents duplicate initEngines() calls
 
-    // ── Language data (same as MainActivity) ─────────────────────────────
-    private val sourceLanguageNames = arrayOf(
-        "Auto-detect", "English", "Japanese",
-        "Chinese (Simplified)", "Chinese (Traditional)", "Korean",
-        "Spanish", "French", "German", "Arabic", "Portuguese", "Russian", "Hindi"
-    )
-    private val sourceLanguageCodes = arrayOf(
-        "auto", "en", "ja", "zh", "zh-tw", "ko",
-        "es", "fr", "de", "ar", "pt", "ru", "hi"
-    )
-    private val targetLanguageNames = arrayOf(
-        "English", "Japanese",
-        "Chinese (Simplified)", "Chinese (Traditional)", "Korean",
-        "Spanish", "French", "German", "Arabic", "Portuguese", "Russian", "Hindi"
-    )
-    private val targetLanguageCodes = arrayOf(
-        "en", "ja", "zh", "zh-tw", "ko",
-        "es", "fr", "de", "ar", "pt", "ru", "hi"
-    )
+    // ── UI state ──────────────────────────────────────────────────────────
+    private val _uiState = MutableStateFlow(WhisperFlowAppState())
+    val uiState: StateFlow<WhisperFlowAppState> = _uiState
 
-    // ── Status update handler ────────────────────────────────────────────
-    private val handler = Handler(Looper.getMainLooper())
-    private val statusUpdater = object : Runnable {
-        override fun run() {
-            val player = dualTrackPlayer ?: return
-            val pos = player.exoPlayer.currentPosition / 1000
-            val dur = player.exoPlayer.duration.let { if (it > 0) it / 1000 else 0 }
-            val storeSize = player.subtitleStore.size()
-
-            // Language-lock badge: show 🔍 while still detecting, 🌐 once locked.
-            // This gives users immediate feedback that auto-detect is running
-            // and surfaces the detected language as soon as it commits.
-            val locked = player.lockedSourceLang
-            val langBadge = when {
-                locked == null           -> "\uD83D\uDD0D detecting"
-                locked == "auto"         -> "\uD83C\uDF10 auto (low conf)"
-                else -> {
-                    val confPct = (player.lockedSourceConfidence * 100).toInt()
-                    "\uD83C\uDF10 ${locked.uppercase()} ${confPct}%"
-                }
-            }
-
-            tvDecoderStatus.text = "$langBadge  \uD83D\uDCDD $storeSize  \u23F1 ${pos}s/${dur}s"
-            handler.postDelayed(this, 1000)
-        }
+    private fun mutate(block: (WhisperFlowAppState) -> WhisperFlowAppState) {
+        _uiState.value = block(_uiState.value)
     }
 
-    // ── File picker ──────────────────────────────────────────────────────
+    // ── Language tables (codes ↔ display names) ──────────────────────────
+    private val sourceLanguages = listOf(
+        "auto"  to "Auto-detect",
+        "en"    to "English",
+        "ja"    to "Japanese",
+        "zh"    to "Chinese (Simplified)",
+        "zh-tw" to "Chinese (Traditional)",
+        "ko"    to "Korean",
+        "es"    to "Spanish",
+        "fr"    to "French",
+        "de"    to "German",
+        "ar"    to "Arabic",
+        "pt"    to "Portuguese",
+        "ru"    to "Russian",
+        "hi"    to "Hindi"
+    )
+    private val targetLanguages = sourceLanguages.drop(1)  // can't translate to "auto"
+
+    // ── File picker ───────────────────────────────────────────────────────
     private val filePickerLauncher =
         registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             if (uri != null) {
-                // Take persistable read permission so the URI survives process death
                 try {
                     contentResolver.takePersistableUriPermission(
                         uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
@@ -135,57 +104,25 @@ class VideoTranslationActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_video_translation)
-
-        playerView         = findViewById(R.id.playerView)
-        subtitleContainer  = findViewById(R.id.subtitleContainer)
-        tvOriginal         = findViewById(R.id.tvOriginal)
-        tvTranslated       = findViewById(R.id.tvTranslated)
-        subtitleDivider    = findViewById(R.id.subtitleDivider)
-        etVideoUrl         = findViewById(R.id.etVideoUrl)
-        btnLoadUrl         = findViewById(R.id.btnLoadUrl)
-        btnPickFile        = findViewById(R.id.btnPickFile)
-        tvDecoderStatus    = findViewById(R.id.tvDecoderStatus)
-        spinnerSrcLang     = findViewById(R.id.spinnerSrcLang)
-        spinnerTgtLang     = findViewById(R.id.spinnerTgtLang)
-        cbShowOriginal     = findViewById(R.id.cbShowOriginal)
-        topControlsOverlay = findViewById(R.id.topControlsOverlay)
-        emptyState         = findViewById(R.id.emptyState)
-
-        setupSpinners()
-        setupButtons()
-        // Engines are loaded lazily when user triggers loadVideo() — not here.
-        // This avoids ~3 GB of model memory sitting idle before the user
-        // has even entered a URL.
-
-        // Auto-hide/show top controls with player controls
-        playerView.setControllerVisibilityListener(
-            PlayerView.ControllerVisibilityListener { visibility ->
-                topControlsOverlay.visibility = visibility
-            }
-        )
+        setContent { WhisperFlowAppHost(activity = this) }
     }
 
     override fun onStop() {
         super.onStop()
         resumePlaybackOnStart = dualTrackPlayer?.exoPlayer?.playWhenReady == true
         dualTrackPlayer?.pause()
-        handler.removeCallbacks(statusUpdater)
     }
 
     override fun onStart() {
         super.onStart()
         if (resumePlaybackOnStart) {
             dualTrackPlayer?.play()
-            handler.removeCallbacks(statusUpdater)
-            handler.post(statusUpdater)
             resumePlaybackOnStart = false
         }
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        handler.removeCallbacks(statusUpdater)
         dualTrackPlayer?.release()
         dualTrackPlayer = null
         sttEngine?.release()
@@ -194,73 +131,101 @@ class VideoTranslationActivity : AppCompatActivity() {
     }
 
     // ─────────────────────────────────────────────────────────────────────
-    // Setup
+    // Public callbacks (called from Compose)
     // ─────────────────────────────────────────────────────────────────────
 
-    private fun setupSpinners() {
-        // Use dark-themed spinner items for dark UI
-        val srcAdapter = ArrayAdapter(this, R.layout.spinner_item_dark, sourceLanguageNames)
-            .also { it.setDropDownViewResource(R.layout.spinner_item_dark) }
-        val tgtAdapter = ArrayAdapter(this, R.layout.spinner_item_dark, targetLanguageNames)
-            .also { it.setDropDownViewResource(R.layout.spinner_item_dark) }
-        spinnerSrcLang.adapter = srcAdapter
-        spinnerTgtLang.adapter = tgtAdapter
-        spinnerSrcLang.setSelection(0)  // Auto-detect
-        spinnerTgtLang.setSelection(0)  // English
+    fun onUrlChange(url: String) = mutate { it.copy(url = url) }
+
+    fun onShowOriginalChange(value: Boolean) = mutate { it.copy(showOriginal = value) }
+
+    fun onSourceLangCycle() {
+        val currentIdx = sourceLanguages.indexOfFirst { it.first == uiState.value.sourceLangCode }
+        val nextIdx = (currentIdx + 1) % sourceLanguages.size
+        val (code, name) = sourceLanguages[nextIdx]
+        mutate { it.copy(sourceLangCode = code, sourceLangLabel = name) }
     }
 
-    private fun setupButtons() {
-        btnLoadUrl.setOnClickListener {
-            val url = etVideoUrl.text.toString().trim()
-            if (url.isBlank()) {
-                Toast.makeText(this, "Enter a video URL", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
+    fun onTargetLangCycle() {
+        val currentIdx = targetLanguages.indexOfFirst { it.first == uiState.value.targetLangCode }
+        val nextIdx = (currentIdx + 1) % targetLanguages.size
+        val (code, name) = targetLanguages[nextIdx]
+        mutate { it.copy(targetLangCode = code, targetLangLabel = name) }
+    }
 
-            // Detect unsupported streaming URLs
-            val errorMsg = validateVideoUrl(url)
-            if (errorMsg != null) {
-                Toast.makeText(this, errorMsg, Toast.LENGTH_LONG).show()
-                return@setOnClickListener
-            }
+    fun onLangChipClick() {
+        // In the Player, clicking the chip cycles the TARGET language only.
+        // Source is locked once detection commits.
+        onTargetLangCycle()
+        Toast.makeText(this, "Target → ${uiState.value.targetLangLabel}",
+            Toast.LENGTH_SHORT).show()
+    }
 
-            dismissKeyboard()
-            resolveAndLoadUrl(Uri.parse(url))
+    fun onPlayPause() {
+        val player = dualTrackPlayer ?: return
+        if (player.exoPlayer.playWhenReady) player.pause() else player.play()
+        mutate { it.copy(isPlaying = player.exoPlayer.playWhenReady) }
+    }
+
+    fun onSeek(positionMs: Long) {
+        dualTrackPlayer?.exoPlayer?.seekTo(positionMs)
+    }
+
+    fun onFullscreenClick() {
+        // Stage-3 placeholder — landscape lock is wired in stage 4.
+        Toast.makeText(this, "Fullscreen — coming soon", Toast.LENGTH_SHORT).show()
+    }
+
+    fun onGoClick() {
+        val url = uiState.value.url.trim()
+        if (url.isBlank()) {
+            Toast.makeText(this, "Enter a video URL", Toast.LENGTH_SHORT).show()
+            return
         }
-
-        btnPickFile.setOnClickListener {
-            dismissKeyboard()
-            filePickerLauncher.launch(arrayOf("video/*"))
+        val errorMsg = validateVideoUrl(url)
+        if (errorMsg != null) {
+            Toast.makeText(this, errorMsg, Toast.LENGTH_LONG).show()
+            return
         }
+        resolveAndLoadUrl(Uri.parse(url))
     }
 
-    private fun dismissKeyboard() {
-        val imm = getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager
-        val token = currentFocus?.windowToken ?: etVideoUrl.windowToken
-        if (token != null) imm?.hideSoftInputFromWindow(token, 0)
-        etVideoUrl.clearFocus()
+    fun onFileClick() {
+        filePickerLauncher.launch(arrayOf("video/*"))
     }
+
+    fun currentPlayer() = dualTrackPlayer?.exoPlayer
 
     /**
-     * Lazily initialise Whisper + NLLB engines.
-     * Called from [loadVideo] the first time a video is loaded, NOT from onCreate().
-     * After engines are ready, [onReady] fires on the main thread.
-     *
-     * If engines are already loaded, [onReady] fires immediately.
+     * Called from the Compose tick loop — pushes player timeline state into
+     * UI state. Doing this here (rather than directly inside the composable)
+     * keeps the reducer-style mutate() pattern intact.
      */
+    fun pumpPlaybackState(pos: Long, dur: Long, isPlaying: Boolean) {
+        mutate {
+            it.copy(
+                positionMs = pos,
+                durationMs = dur,
+                isPlaying = isPlaying
+            )
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Engine init (lazy — first time loadVideo is called)
+    // ─────────────────────────────────────────────────────────────────────
+
     private fun initEngines(onReady: (() -> Unit)? = null) {
-        // Already loaded — fire callback immediately
         if (sttEngine != null && translationEngine != null) {
             onReady?.invoke()
             return
         }
-        // Already loading in background — don't start a second load
         if (enginesLoading) {
-            Log.w(TAG, "initEngines() already in progress, skipping duplicate call")
+            Log.w(TAG, "initEngines() already in progress")
             return
         }
         enginesLoading = true
-        tvDecoderStatus.text = "● LOADING AI…"
+        mutate { it.copy(statusLabel = "LOADING AI", statusTone = StatusTone.Translating) }
+
         initScope.launch {
             try {
                 Log.i(TAG, "PERF | initEngines start " +
@@ -297,18 +262,17 @@ class VideoTranslationActivity : AppCompatActivity() {
                     sttEngine = stt
                     translationEngine = mt
                     enginesLoading = false
-                    tvDecoderStatus.text = "● READY"
-                    Log.i(TAG, "Engines initialized")
+                    mutate { it.copy(statusLabel = "READY", statusTone = StatusTone.Ready) }
                     onReady?.invoke()
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to init engines", e)
                 withContext(Dispatchers.Main) {
                     enginesLoading = false
-                    tvDecoderStatus.text = "● ERROR"
+                    mutate { it.copy(statusLabel = "ERROR", statusTone = StatusTone.Error) }
                     Toast.makeText(
                         this@VideoTranslationActivity,
-                        "Failed to load AI models: ${e.message}",
+                        "Failed to load AI: ${e.message}",
                         Toast.LENGTH_LONG
                     ).show()
                 }
@@ -317,23 +281,11 @@ class VideoTranslationActivity : AppCompatActivity() {
     }
 
     // ─────────────────────────────────────────────────────────────────────
-    // URL validation
+    // URL resolve + video load
     // ─────────────────────────────────────────────────────────────────────
 
-    /**
-     * Returns an error message if the URL is unsupported, or null if it looks OK.
-     *
-     * Supported:
-     *   - YouTube watch / shorts / live / share links → resolved via InnerTube API
-     *   - Direct video URLs (.mp4, .mkv, .m3u8, .mpd, etc.) → played directly
-     *
-     * Blocked:
-     *   - DRM-protected streaming services (Netflix, Disney+, etc.)
-     */
     private fun validateVideoUrl(url: String): String? {
         val lower = url.lowercase()
-
-        // DRM-protected services
         if (lower.contains("netflix.com") || lower.contains("disneyplus.com") ||
             lower.contains("hulu.com") || lower.contains("hbomax.com") ||
             lower.contains("primevideo.com")
@@ -341,57 +293,48 @@ class VideoTranslationActivity : AppCompatActivity() {
             return "This streaming service uses DRM protection.\n" +
                 "Please use a YouTube link or direct video URL."
         }
-
-        // Must start with http:// or https://
         if (!lower.startsWith("http://") && !lower.startsWith("https://")) {
             return "URL must start with http:// or https://"
         }
-
         return null
     }
 
     private fun resolveAndLoadUrl(inputUri: Uri) {
         val isYouTube = YouTubeStreamResolver.isYouTubeUri(inputUri)
-            tvDecoderStatus.text = if (isYouTube) "● RESOLVING…" else "● LOADING…"
-
+        mutate {
+            it.copy(
+                statusLabel = if (isYouTube) "RESOLVING" else "LOADING",
+                statusTone = StatusTone.Translating
+            )
+        }
         initScope.launch {
-            val resolvedUri = withContext(Dispatchers.IO) {
+            val resolved = withContext(Dispatchers.IO) {
                 try {
-                    // Always go through the resolver — it handles both YouTube
-                    // and non-YouTube URIs (non-YouTube are returned as-is).
                     YouTubeStreamResolver.resolvePlayableUri(inputUri)
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to resolve URL: $inputUri", e)
                     null
                 }
             }
-
             withContext(Dispatchers.Main) {
-                if (resolvedUri == null) {
-                    tvDecoderStatus.text = "● ERROR"
+                if (resolved == null) {
+                    mutate { it.copy(statusLabel = "ERROR", statusTone = StatusTone.Error) }
                     val msg = if (isYouTube) {
                         "Cannot resolve this YouTube video.\n" +
-                            "The video may be private, age-restricted, or region-locked.\n" +
-                            "Try another video or use a local file."
+                            "It may be private, age-restricted, or region-locked."
                     } else {
                         "Cannot play this URL.\n" +
                             "Make sure it points to a video file (.mp4, .mkv, .m3u8)."
                     }
-                    Toast.makeText(
-                        this@VideoTranslationActivity, msg, Toast.LENGTH_LONG
-                    ).show()
+                    Toast.makeText(this@VideoTranslationActivity, msg, Toast.LENGTH_LONG).show()
                 } else {
-                    Log.i(TAG, "Resolved: ${inputUri} → ${resolvedUri.uri} " +
-                        "(mime=${resolvedUri.mimeType}, headers=${resolvedUri.headers.size})")
-                    loadVideo(resolvedUri.uri, resolvedUri.mimeType, resolvedUri.headers)
+                    Log.i(TAG, "Resolved: $inputUri → ${resolved.uri} " +
+                        "(mime=${resolved.mimeType})")
+                    loadVideo(resolved.uri, resolved.mimeType, resolved.headers)
                 }
             }
         }
     }
-
-    // ─────────────────────────────────────────────────────────────────────
-    // Video loading
-    // ─────────────────────────────────────────────────────────────────────
 
     private fun loadVideo(
         uri: Uri,
@@ -399,9 +342,8 @@ class VideoTranslationActivity : AppCompatActivity() {
         headers: Map<String, String> = emptyMap()
     ) {
         val stt = sttEngine
-        val mt  = translationEngine
+        val mt = translationEngine
         if (stt == null || mt == null) {
-            // Engines not loaded yet — start loading, then auto-retry loadVideo
             initEngines {
                 Log.i(TAG, "Engines ready — auto-loading video: $uri")
                 loadVideo(uri, mimeType, headers)
@@ -409,11 +351,11 @@ class VideoTranslationActivity : AppCompatActivity() {
             return
         }
 
-        // Release previous player if any
+        // Tear down any previous player
         dualTrackPlayer?.release()
 
-        val srcLang = sourceLanguageCodes[spinnerSrcLang.selectedItemPosition]
-        val tgtLang = targetLanguageCodes[spinnerTgtLang.selectedItemPosition]
+        val srcLang = uiState.value.sourceLangCode
+        val tgtLang = uiState.value.targetLangCode
 
         val player = DualTrackPlayer(
             context = this,
@@ -423,36 +365,17 @@ class VideoTranslationActivity : AppCompatActivity() {
             targetLang = tgtLang
         )
 
-        // Bind ExoPlayer to the PlayerView
-        playerView.player = player.exoPlayer
-
-        // Subtitle listener
-        player.setSubtitleListener { entry ->
-            updateSubtitle(entry)
-        }
-
-        // Error listener — show user-friendly message instead of crashing
-        player.onErrorListener = { error ->
-            handlePlaybackError(error)
-        }
-
-        // Scheme A: show a one-shot toast when the priming-phase language
-        // detector commits. Callback arrives on a background thread, so
-        // marshal to main. `accepted=false` means we never got a confident
-        // detection and fell back to per-window auto-mode; flag that visibly
-        // so the user knows subtitles may be unstable and can tap the source
-        // language spinner to fix it.
+        player.setSubtitleListener { entry -> onSubtitleEntry(entry) }
+        player.onErrorListener = { error -> handlePlaybackError(error) }
         player.onLanguageLocked = { lang, confidence, accepted ->
             runOnUiThread {
                 val msg = if (accepted) {
                     val confPct = (confidence * 100).toInt()
-                    "\uD83C\uDF10 Detected source language: ${lang.uppercase()} ($confPct%)"
+                    "Detected: ${lang.uppercase()} ($confPct%)"
                 } else {
-                    "\u26A0\uFE0F Could not confidently detect language. " +
-                        "Consider selecting a source language manually."
+                    "Couldn't detect language confidently — pick one manually if subtitles look wrong."
                 }
                 Toast.makeText(this@VideoTranslationActivity, msg, Toast.LENGTH_SHORT).show()
-                Log.i(TAG, "UI notified of language lock: lang=$lang confidence=$confidence accepted=$accepted")
             }
         }
 
@@ -460,72 +383,118 @@ class VideoTranslationActivity : AppCompatActivity() {
         player.play()
         dualTrackPlayer = player
 
-        // Hide empty state, show player
-        emptyState.visibility = View.GONE
-
-        // Start status updater
-        handler.removeCallbacks(statusUpdater)
-        handler.post(statusUpdater)
-
-        Log.i(TAG, "Video loaded: $uri ($srcLang -> $tgtLang, headers=${headers.size})")
-        tvDecoderStatus.text = "● DECODING…"
-    }
-
-    // ─────────────────────────────────────────────────────────────────────
-    // Subtitle display
-    // ─────────────────────────────────────────────────────────────────────
-
-    private fun updateSubtitle(entry: SubtitleStore.Entry?) {
-        if (entry == null || entry.translated.isBlank()) {
-            subtitleContainer.visibility = View.GONE
-            return
+        mutate {
+            it.copy(
+                isVideoLoaded = true,
+                isPlaying = true,
+                statusLabel = "TRANSLATING",
+                statusTone = StatusTone.Translating
+            )
         }
 
-        subtitleContainer.visibility = View.VISIBLE
-        tvTranslated.text = entry.translated
-
-        val showOrig = cbShowOriginal.isChecked && entry.original.isNotBlank()
-        tvOriginal.visibility = if (showOrig) View.VISIBLE else View.GONE
-        subtitleDivider.visibility = if (showOrig) View.VISIBLE else View.GONE
-        if (showOrig) tvOriginal.text = entry.original
+        Log.i(TAG, "Video loaded: $uri ($srcLang → $tgtLang)")
     }
 
-    // ─────────────────────────────────────────────────────────────────────
-    // Error handling
-    // ─────────────────────────────────────────────────────────────────────
+    private fun onSubtitleEntry(entry: SubtitleStore.Entry?) {
+        // Push current subtitle into UI state. Recent list shows last 3
+        // distinct translated lines for the "RECENT" preview block.
+        val current = uiState.value
+        val newEntry = entry?.let {
+            RecentSubtitle(
+                timestamp = formatTime(it.startMs),
+                translated = it.translated
+            )
+        }
+        val updatedRecent = if (entry != null && entry.translated.isNotBlank() &&
+            (current.recentEntries.lastOrNull()?.translated != entry.translated)
+        ) {
+            (current.recentEntries + RecentSubtitle(
+                timestamp = formatTime(entry.startMs),
+                translated = entry.translated
+            )).takeLast(8)
+        } else {
+            current.recentEntries
+        }
+        mutate {
+            it.copy(
+                translatedText = entry?.translated,
+                originalText = entry?.original,
+                recentEntries = updatedRecent
+            )
+        }
+    }
 
     private fun handlePlaybackError(error: PlaybackException) {
         Log.e(TAG, "Playback error: ${error.errorCodeName}", error)
-
-        handler.removeCallbacks(statusUpdater)
-
-        // Build a user-friendly message based on the error type
         val cause = error.cause
         val message = when {
             cause is UnrecognizedInputFormatException ->
-                "Cannot play this source — format not recognized.\n" +
-                "Make sure the URL points directly to a video file (.mp4, .mkv, .m3u8)."
-
+                "Cannot play this source — format not recognized."
             error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
             error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ->
                 "Network error — check your connection and try again."
-
             error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ->
-                "Server returned an error. The URL may be invalid or expired."
-
+                "Server error. The URL may be invalid or expired."
             error.errorCode == PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND ->
-                "File not found. Check the URL or file path."
-
-            else ->
-                "Playback error: ${error.message ?: error.errorCodeName}"
+                "File not found."
+            else -> "Playback error: ${error.message ?: error.errorCodeName}"
         }
-
-        tvDecoderStatus.text = "● ERROR"
-        subtitleContainer.visibility = View.GONE
+        mutate { it.copy(statusLabel = "ERROR", statusTone = StatusTone.Error) }
         Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+    }
+
+    private fun formatTime(ms: Long): String {
+        val s = ms / 1000
+        val mm = (s / 60) % 60
+        val ss = s % 60
+        val hh = s / 3600
+        return if (hh > 0) "%d:%02d:%02d".format(hh, mm, ss)
+        else "%d:%02d".format(mm, ss)
     }
 
     companion object {
         private const val TAG = "VideoTranslationAct"
     }
+}
+
+/**
+ * Compose host — subscribes to the Activity's [uiState] and pumps player
+ * position / duration into UI state on a 250 ms tick.
+ */
+@Composable
+private fun WhisperFlowAppHost(activity: VideoTranslationActivity) {
+    val state by activity.uiState.collectAsState()
+    val player = remember(state.isVideoLoaded) { activity.currentPlayer() }
+
+    // Tick — update positionMs/durationMs/isPlaying every 250ms while a
+    // video is loaded. Cheap; doesn't fight the player's own timeline.
+    LaunchedEffect(state.isVideoLoaded) {
+        if (!state.isVideoLoaded) return@LaunchedEffect
+        while (true) {
+            val p = activity.currentPlayer()
+            if (p != null) {
+                activity.pumpPlaybackState(
+                    pos = p.currentPosition,
+                    dur = p.duration.coerceAtLeast(0L),
+                    isPlaying = p.isPlaying
+                )
+            }
+            kotlinx.coroutines.delay(250)
+        }
+    }
+
+    WhisperFlowApp(
+        state = state,
+        player = player,
+        onUrlChange = activity::onUrlChange,
+        onGoClick = activity::onGoClick,
+        onFileClick = activity::onFileClick,
+        onSourceLangClick = activity::onSourceLangCycle,
+        onTargetLangClick = activity::onTargetLangCycle,
+        onShowOriginalChange = activity::onShowOriginalChange,
+        onPlayPause = activity::onPlayPause,
+        onSeek = activity::onSeek,
+        onLangChipClick = activity::onLangChipClick,
+        onFullscreenClick = activity::onFullscreenClick
+    )
 }
