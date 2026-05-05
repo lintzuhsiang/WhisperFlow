@@ -152,14 +152,6 @@ class VideoTranslationActivity : ComponentActivity() {
         mutate { it.copy(targetLangCode = code, targetLangLabel = name) }
     }
 
-    fun onLangChipClick() {
-        // In the Player, clicking the chip cycles the TARGET language only.
-        // Source is locked once detection commits.
-        onTargetLangCycle()
-        Toast.makeText(this, "Target → ${uiState.value.targetLangLabel}",
-            Toast.LENGTH_SHORT).show()
-    }
-
     fun onPlayPause() {
         val player = dualTrackPlayer ?: return
         if (player.exoPlayer.playWhenReady) player.pause() else player.play()
@@ -168,6 +160,35 @@ class VideoTranslationActivity : ComponentActivity() {
 
     fun onSeek(positionMs: Long) {
         dualTrackPlayer?.exoPlayer?.seekTo(positionMs)
+    }
+
+    /** Skip the visible playhead by `deltaMs` (negative for backward). */
+    fun onSkipRelative(deltaMs: Long) {
+        val player = dualTrackPlayer ?: return
+        val current = player.exoPlayer.currentPosition
+        val duration = player.exoPlayer.duration.coerceAtLeast(0L)
+        val target = (current + deltaMs).coerceIn(0L, duration)
+        player.exoPlayer.seekTo(target)
+    }
+
+    /** New: source language picked from PlayerControls' DropdownMenu. */
+    fun onSourceLangChange(opt: com.liveTranslation.ui.components.LanguageOption) {
+        mutate { it.copy(sourceLangCode = opt.code, sourceLangLabel = opt.displayName) }
+        // Note: existing dual-track player keeps its initial sourceLang;
+        // switching mid-stream is handled by reload-on-go in this build.
+    }
+
+    /** New: target language picked from PlayerControls' DropdownMenu. */
+    fun onTargetLangChange(opt: com.liveTranslation.ui.components.LanguageOption) {
+        mutate { it.copy(targetLangCode = opt.code, targetLangLabel = opt.displayName) }
+    }
+
+    /** Back arrow → return to landing, tear down the player. */
+    fun onBackToLanding() {
+        dualTrackPlayer?.release()
+        dualTrackPlayer = null
+        mutate { it.copy(isVideoLoaded = false, isPlaying = false,
+                         translatedText = null, originalText = null) }
     }
 
     fun onFullscreenClick() {
@@ -494,7 +515,11 @@ private fun WhisperFlowAppHost(activity: VideoTranslationActivity) {
         onShowOriginalChange = activity::onShowOriginalChange,
         onPlayPause = activity::onPlayPause,
         onSeek = activity::onSeek,
-        onLangChipClick = activity::onLangChipClick,
+        onSkipBackward = { activity.onSkipRelative(-10_000L) },
+        onSkipForward  = { activity.onSkipRelative( 10_000L) },
+        onSourceLangChange = activity::onSourceLangChange,
+        onTargetLangChange = activity::onTargetLangChange,
+        onBackToLanding = activity::onBackToLanding,
         onFullscreenClick = activity::onFullscreenClick
     )
 }

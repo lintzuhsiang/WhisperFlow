@@ -64,7 +64,11 @@ fun WhisperFlowApp(
     onShowOriginalChange: (Boolean) -> Unit,
     onPlayPause: () -> Unit,
     onSeek: (Long) -> Unit,
-    onLangChipClick: () -> Unit,
+    onSkipBackward: () -> Unit,
+    onSkipForward: () -> Unit,
+    onSourceLangChange: (com.liveTranslation.ui.components.LanguageOption) -> Unit,
+    onTargetLangChange: (com.liveTranslation.ui.components.LanguageOption) -> Unit,
+    onBackToLanding: () -> Unit,
     onFullscreenClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -107,9 +111,13 @@ fun WhisperFlowApp(
                         sourceLangCode = state.sourceLangCode,
                         targetLangCode = state.targetLangCode,
                         recentEntries = state.recentEntries,
+                        onBackClick = onBackToLanding,
                         onPlayPause = onPlayPause,
                         onSeek = onSeek,
-                        onLangChipClick = onLangChipClick,
+                        onSkipBackward = onSkipBackward,
+                        onSkipForward = onSkipForward,
+                        onSourceLangChange = onSourceLangChange,
+                        onTargetLangChange = onTargetLangChange,
                         onFullscreenClick = onFullscreenClick,
                         statusLabel = state.statusLabel,
                         statusTone = state.statusTone

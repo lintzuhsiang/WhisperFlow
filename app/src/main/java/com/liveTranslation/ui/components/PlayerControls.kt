@@ -16,14 +16,23 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.outlined.ArrowDropDown
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -46,7 +55,10 @@ fun PlayerControls(
     targetLangCode: String,
     onPlayPause: () -> Unit,
     onSeek: (Long) -> Unit,
-    onLangChipClick: () -> Unit,
+    onSkipBackward: () -> Unit,
+    onSkipForward: () -> Unit,
+    onSourceLangChange: (LanguageOption) -> Unit,
+    onTargetLangChange: (LanguageOption) -> Unit,
     onFullscreenClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -60,14 +72,36 @@ fun PlayerControls(
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            // Transport: -10  ▶  +10
+            SkipButton(forward = false, onClick = onSkipBackward)
             PlayPauseButton(isPlaying = isPlaying, onClick = onPlayPause)
-            LangChip(
-                source = sourceLangCode,
-                target = targetLangCode,
-                onClick = onLangChipClick
+            SkipButton(forward = true, onClick = onSkipForward)
+
+            Spacer(Modifier.weight(1f))
+
+            // Inline lang pair: each chip opens its own DropdownMenu so
+            // the user can switch source / target without leaving the
+            // player. Same shape as iOS LangChipMenu.
+            LangChipMenu(
+                selectedCode = sourceLangCode,
+                options = LanguageOption.sources,
+                onSelect = onSourceLangChange
             )
+            Text(
+                "→",
+                style = MaterialTheme.typography.labelMedium,
+                color = WhisperFlowColors.Amber
+            )
+            LangChipMenu(
+                selectedCode = targetLangCode,
+                options = LanguageOption.targets,
+                onSelect = onTargetLangChange
+            )
+
+            Spacer(Modifier.weight(1f))
+
             FullscreenButton(onClick = onFullscreenClick)
         }
     }
@@ -136,37 +170,93 @@ private fun PlayPauseButton(isPlaying: Boolean, onClick: () -> Unit) {
     }
 }
 
+/**
+ * One BCP-47 code pill that drops a [DropdownMenu] of [options]. Used
+ * twice in the controls row (source + target). Native Material3
+ * dropdown so we get a11y / focus / dismissal handling for free.
+ */
 @Composable
-private fun LangChip(source: String, target: String, onClick: () -> Unit) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
+private fun LangChipMenu(
+    selectedCode: String,
+    options: List<LanguageOption>,
+    onSelect: (LanguageOption) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Box {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .height(28.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(WhisperFlowColors.Surface)
+                .border(0.5.dp, WhisperFlowColors.Divider, RoundedCornerShape(14.dp))
+                .clickable { expanded = true }
+                .padding(horizontal = 12.dp)
+        ) {
+            Text(
+                selectedCode.uppercase(),
+                style = MaterialTheme.typography.labelMedium,
+                color = WhisperFlowColors.TextHi
+            )
+            Spacer(Modifier.width(4.dp))
+            Icon(
+                imageVector = Icons.Outlined.ArrowDropDown,
+                contentDescription = null,
+                tint = WhisperFlowColors.TextLo,
+                modifier = Modifier.size(14.dp)
+            )
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.background(WhisperFlowColors.SurfaceHi)
+        ) {
+            options.forEach { opt ->
+                val isSelected = opt.code.equals(selectedCode, ignoreCase = true)
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            opt.displayName,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (isSelected) WhisperFlowColors.Amber
+                                    else WhisperFlowColors.TextHi
+                        )
+                    },
+                    trailingIcon = {
+                        if (isSelected) {
+                            Icon(
+                                imageVector = Icons.Outlined.Check,
+                                contentDescription = null,
+                                tint = WhisperFlowColors.Amber,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    },
+                    onClick = {
+                        expanded = false
+                        onSelect(opt)
+                    }
+                )
+            }
+        }
+    }
+}
+
+/** Outline ±10 s skip button. Material's gobackward/goforward equivalents. */
+@Composable
+private fun SkipButton(forward: Boolean, onClick: () -> Unit) {
+    Box(
         modifier = Modifier
-            .height(28.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(WhisperFlowColors.Surface)
-            .border(0.5.dp, WhisperFlowColors.Divider, RoundedCornerShape(14.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp)
+            .size(36.dp)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
     ) {
-        Text(
-            source.uppercase(),
-            style = MaterialTheme.typography.labelMedium,
-            color = WhisperFlowColors.TextMd
-        )
-        Spacer(Modifier.width(8.dp))
-        Text("→", style = MaterialTheme.typography.labelMedium, color = WhisperFlowColors.Amber)
-        Spacer(Modifier.width(8.dp))
-        Text(
-            target.uppercase(),
-            style = MaterialTheme.typography.labelMedium,
-            color = WhisperFlowColors.TextHi
-        )
-        Spacer(Modifier.width(4.dp))
         Icon(
-            imageVector = Icons.Outlined.ArrowDropDown,
-            contentDescription = null,
-            tint = WhisperFlowColors.TextLo,
-            modifier = Modifier.size(14.dp)
+            imageVector = if (forward) Icons.Filled.Forward10 else Icons.Filled.Replay10,
+            contentDescription = if (forward) "Skip forward 10 seconds" else "Skip backward 10 seconds",
+            tint = WhisperFlowColors.TextMd,
+            modifier = Modifier.size(26.dp)
         )
     }
 }
