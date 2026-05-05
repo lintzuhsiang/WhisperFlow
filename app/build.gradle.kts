@@ -18,10 +18,14 @@ val localProps = Properties().apply {
     val f = rootProject.file("local.properties")
     if (f.exists()) f.inputStream().use { load(it) }
 }
-fun secret(key: String, default: String = ""): String =
-    localProps.getProperty(key)
-        ?: System.getenv(key)
-        ?: default
+// Read a secret. Defends against the most common local.properties mistake:
+// inline `# …` comments. Java Properties only treats `#` as a comment when
+// it's at line-start, so we strip everything after the first whitespace
+// run as a courtesy.
+fun secret(key: String, default: String = ""): String {
+    val raw = localProps.getProperty(key) ?: System.getenv(key) ?: default
+    return raw.trim().substringBefore('#').trim().substringBefore(' ').trim()
+}
 
 val openAiKey: String   = secret("OPENAI_API_KEY")
 val sttEngineMode: String = secret("STT_ENGINE_MODE", "CLOUD") // CLOUD or LOCAL
