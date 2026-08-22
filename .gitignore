@@ -12,7 +12,10 @@ app/local.properties
 .env
 
 # ML model files (too large for git — distribute separately)
-app/src/main/assets/
+app/*.bin
+app/src/main/assets/*
+!app/src/main/assets/
+!app/src/main/assets/nllb_tokenizer.json
 app/nllb_int8/
 nllb_int8_v2/
 nllb_int8_v3/
@@ -23,6 +26,10 @@ whisper.cpp/
 # Bench data
 bench_test_audio/
 bench_results/
+
+# Local AI prompt scratch files
+claude_*.md
+claude_*.txt
 
 # Python
 __pycache__/
