@@ -16,6 +16,7 @@ app/*.bin
 app/src/main/assets/*
 !app/src/main/assets/
 !app/src/main/assets/nllb_tokenizer.json
+!app/src/main/assets/sentencepiece.bpe.model
 app/nllb_int8/
 nllb_int8_v2/
 nllb_int8_v3/
