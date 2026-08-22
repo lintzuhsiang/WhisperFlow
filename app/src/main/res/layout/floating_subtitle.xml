@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Floating subtitle overlay rendered by FloatingSubtitleView.
+
+    Design goals:
+      • Translucent dark pill so subtitles are readable on any video background.
+      • Compact: two rows (original + translated).
+      • Touch events propagate through via FLAG_NOT_TOUCH_MODAL on the window.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@drawable/subtitle_background"
+    android:padding="12dp"
+    android:minWidth="200dp"
+    android:maxWidth="340dp">
+
+    <!-- Original transcription (source language) -->
+    <TextView
+        android:id="@+id/tvOriginal"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="#CCFFFFFF"
+        android:textSize="13sp"
+        android:fontFamily="sans-serif"
+        android:maxLines="2"
+        android:ellipsize="end"
+        android:hint="…" />
+
+    <!-- Divider -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#44FFFFFF"
+        android:layout_marginTop="4dp"
+        android:layout_marginBottom="4dp" />
+
+    <!-- Translated text (target language) -->
+    <TextView
+        android:id="@+id/tvTranslated"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="#FFFFFFFF"
+        android:textSize="15sp"
+        android:textStyle="bold"
+        android:fontFamily="sans-serif"
+        android:maxLines="3"
+        android:ellipsize="end"
+        android:hint="…" />
+
+</LinearLayout>

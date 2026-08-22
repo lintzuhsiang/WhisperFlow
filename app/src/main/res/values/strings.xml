@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">WhisperFlow</string>
+    <string name="minimize_to_pip">Minimize (PiP)</string>
+    <string name="pip_action_stop">Stop</string>
+    <string name="pip_status_idle">Idle</string>
+    <string name="pip_status_listening">Listening…</string>
+    <string name="pip_status_disconnected">Disconnected — tap to restart</string>
+    <string name="pip_hint_tap_to_return">Tap to return</string>
+    <string name="empty_tagline">Real-time AI translation for any video</string>
+    <string name="empty_instructions">Paste a direct video URL (.mp4, .m3u8) or a YouTube link above</string>
+    <string name="empty_file_hint">Or tap FILE to load from your device</string>
+    <string name="url_hint">Paste video URL or YouTube link…</string>
+    <string name="status_ready">● READY</string>
+    <string name="status_decoding">● DECODING</string>
+    <string name="status_loading">● LOADING</string>
+    <string name="status_error">● ERROR</string>
+</resources>

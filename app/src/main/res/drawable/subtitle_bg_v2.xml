@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modern subtitle pill — deep charcoal-green with generous radius -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#D9121B14" />
+    <corners android:radius="20dp" />
+</shape>
