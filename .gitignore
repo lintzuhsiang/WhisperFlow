@@ -32,6 +32,9 @@ bench_results/
 claude_*.md
 claude_*.txt
 
+# Local Git history backups
+*.bundle
+
 # Python
 __pycache__/
 *.pyc
